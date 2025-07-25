@@ -1,0 +1,40 @@
+frontend_path = Path(__file__).parent / "frontend"
+
+web_image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .pip_install("jinja2==3.1.5", "fastapi[standard]==0.115.8")
+    .add_local_dir(  # mount frontend/client code
+        frontend_path, remote_path="/assets"
+    )
+)
+
+
+@app.function(image=web_image)
+@modal.concurrent(max_inputs=1000)
+@modal.asgi_app()
+def ui():
+    import fastapi.staticfiles
+    import fastapi.templating
+
+    web_app = fastapi.FastAPI()
+    templates = fastapi.templating.Jinja2Templates(directory="/assets")
+
+    @web_app.get("/")
+    async def read_root(request: fastapi.Request):
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "inference_url": Inference().web.get_web_url(),
+                "model_name": "LTX-Video Image to Video",
+                "default_prompt": "A young girl stands calmly in the foreground, looking directly at the camera, as a house fire rages in the background.",
+            },
+        )
+
+    web_app.mount(
+        "/static",
+        fastapi.staticfiles.StaticFiles(directory="/assets"),
+        name="static",
+    )
+
+    return web_app
